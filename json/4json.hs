@@ -9,7 +9,7 @@ import Network.HTTP.Conduit (simpleHttp)
 import GHC.Generics
 
 import System.IO
-import System.Environment (getArgs)
+import System.Environment (getArgs, getProgName)
 import Data.Char (isNumber)
 
 
@@ -18,9 +18,6 @@ import ChanTypes
 --getJSON :: IO B.ByteString
 --getJSON = B.readFile "post.json"
 
--- Read the remote copy of the JSON file.
-getActivePages :: IO (B.ByteString)
-getActivePages = simpleHttp "http://a.4cdn.org/g/threads.json"
 
 getPageThreads :: Int -> [Page] -> [Integer]
 getPageThreads n []     = error $ "Some error happend while fetching on " ++ show n ++ " page :/"
@@ -29,11 +26,13 @@ getPageThreads n (x:xs) = getPageThreads (n-1) xs
 
 
 
-getThreadByID :: Integer -> IO (Thread)
-getThreadByID ident = do
-    res <- simpleHttp ("http://a.4cdn.org/g/thread/" ++ show ident ++ ".json")
+getThreadByID :: String  -- board
+              -> Integer -- threadnumber
+              -> IO (Thread)
+getThreadByID board ident = do
+    res <- simpleHttp ("http://a.4cdn.org/" ++ board ++ "/thread/" ++ show ident ++ ".json")
     case eitherDecode res :: Either String Thread of
-      Left err     -> return (Thread [Post ""])
+      Left err     -> return (Thread [Post ", "])
       Right thread -> return thread
 
 filterTags :: [String] -> [String]
@@ -66,38 +65,49 @@ threadsToLines ((Thread l):xs) = postsToLines l ++ threadsToLines xs
         postsToLines []     = []
         postsToLines ((Post y):ys) = [unpack y] ++ postsToLines ys
 
-getThreadIds :: Bool -> [Integer] -> [Page] -> [Integer]
-getThreadIds True l pages = l ++ concatMap (\x -> getPageThreads x pages) [1..10]
-getThreadIds _    _ pages = concatMap (\x -> getPageThreads x pages) [1..10]
 
---        with Archive
-jsonAction :: Bool -> FilePath -> IO ()
-jsonAction archive fp = do
+allBoards :: [String]
+allBoards = ["a", "b", "c", "d", "e", "f", "g", "gif", "h", "hr", "k", "m", "o", "p", "r", "s", "t", "u", "v",
+             "vg", "vr", "w", "wg", "i", "ic", "r9k", "s4s", "cm", "hm", "lgbt", "y", "3", "adv", "an", "asp",
+             "biz", "cgl", "ck", "co", "diy", "fa", "fit", "gd", "hc", "int", "jp", "lit", "mlp", "mu", "n",
+             "out", "po", "pol", "sci", "soc", "sp", "tg", "toy", "trv", "tv", "vp", "wsg", "x"]
 
-    res <- (eitherDecode <$> getActivePages) :: IO (Either String [Page])
-    res' <- (eitherDecode <$> simpleHttp "http://a.4cdn.org/g/archive.json") :: IO (Either String [Integer])
 
-    case (res, res') of
-        (Left err, _)    -> putStrLn err
-        (Right pages, Right ids) -> do
-          hSetBuffering stdout NoBuffering
-          let threadIds = getThreadIds archive ids pages
-          putStrLn "Fetched current information about threads..."
-          threads <- forM threadIds getThreadByID
-          putStrLn "Done extracting posts from all threads..."
-          let !lines = threadsToLines threads
-          putStrLn "Done converting threads to lines.."
-          let !filteredInput = filterTags lines
-          putStrLn "Done filtering tabs..."
-          let content = concatMap (\x -> x ++ "\n") filteredInput
-          writeFile fp content
-          putStrLn $ "Content storen in " ++ fp ++ "!"
+jsonAction :: String   -- board to fetch from (f.e "g")
+           -> FilePath -- path to .txt-file
+           -> IO ()
+jsonAction board fp = do
+
+    hSetBuffering stdout NoBuffering
+
+    let validBoard = board `elem` allBoards
+    res <- (eitherDecode <$> simpleHttp ("http://a.4cdn.org/" ++ board ++ "/threads.json")) :: IO (Either String [Page])
+
+    case (res, validBoard) of
+        (_, False)          -> putStrLn "Sorry, this board can't be found..."
+        (Left err,_)        -> putStrLn err
+        (Right pages, True) -> do
+
+            let threadIds = concatMap (\x -> getPageThreads x pages) [1..10]
+            putStrLn "Fetched current information about threads..."
+            threads <- forM threadIds (getThreadByID board)
+            putStrLn "Done extracting posts from all threads..."
+            let !lines = threadsToLines threads
+            putStrLn "Done converting threads to lines.."
+            let !filteredInput = filterTags lines
+            putStrLn "Done filtering tabs..."
+            let content = concatMap (\x -> x ++ "\n") filteredInput
+            writeFile fp content
+            putStrLn $ "Content stored in " ++ fp ++ "!"
 
 
 main :: IO()
 main = do
     args <- getArgs
     case args of
-      --("-to":fp:"-archive":_) -> jsonAction True fp
-      ("-to":fp:_)            -> jsonAction False fp
-      _                     -> putStrLn "Usage: ./gchan -to <filename> <optional -archive to include all threads>"
+      ["-board", board, "-to", to] -> jsonAction board to
+      _            -> do
+        name <- getProgName
+        putStrLn "Usage:"
+        putStrLn $ "./" ++ name ++ " -board <4chanboard> -to <filepath to .txt>"
+
