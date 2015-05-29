@@ -85,7 +85,6 @@ updatePrefL (p1@(Prefix w c):xs) p2@(Prefix w' c')
 
 -- | Single Connection with DB
 --   All learning access to DB is called within this function
-
 learnAction :: Text -> [FilePath] -> IO()
 learnAction fp fps = runSqlite fp $ do
     runMigration migrateAll
@@ -94,39 +93,7 @@ learnAction fp fps = runSqlite fp $ do
 
     return ()
 
--- #################### CREATE SENTENCE ####################
-
-
--- | Int -> DB Action
---   Ques the DB and constructs a sentence with N words
--- getSentence n = do
---     list <- selectList [] [Asc WordSuffix]
---     sentence <- liftIO $ createSentence list Nothing n
---     liftIO $ print $ T.unwords sentence
-
-
--- createSentence :: [Entity Word] -> Maybe Word -> Int -> IO ([T.Text])
--- createSentence _            _             0   = return []
--- createSentence list         Nothing       n   = do
---     r <- randomRIO (0, (length list) - 1)
---     let (Entity _ word) = list !! r
---     createSentence list (Just word) n
-
--- createSentence list (Just (Word _ prefL)) n = do
---     let prefLLength = foldl' (\xs (Prefix _ m) -> m + xs) 0 prefL
---     r' <- randomRIO (0, prefLLength - 1)
---     let longPrefix  = getSemiRandomThunk prefL r'
---         newSuf      = (T.words longPrefix) !! 0
---         mword       = lookupSuf list newSuf
---     rest <- createSentence list mword (n-1)
---     return $ rest ++ [longPrefix]
-
--- lookupSuf :: [Entity Word] -> T.Text -> Maybe Word
--- lookupSuf [] _ = Nothing
--- lookupSuf (Entity _ (word@(Word w _)):xs) w'
---   | w == w'   = Just word
---   | otherwise = lookupSuf xs w'
-
+-- #################### GET Request ####################
 
 getSemiRandomThunk :: [Prefix] -> Int -> T.Text
 getSemiRandomThunk []     _ = "!!!ERROR!!!"
