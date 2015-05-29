@@ -7,7 +7,7 @@ Persistent Marchov Chain generator based on 4chan boards
 * `json/`   - JSON board to .txt parser
 
 
-## How to fetch threads from a 4chan board
+# How to fetch threads from a 4chan board
 
 
 * `./gchan -board <a board from 4chan with no less than 10 pages> -to <txt-file to save to>`

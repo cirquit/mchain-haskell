@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, DeriveGeneric, BangPatterns #-}
+{-# LANGUAGE OverloadedStrings, DeriveGeneric, BangPatterns, ViewPatterns #-}
 
 import Data.Aeson
 import Control.Applicative
@@ -42,7 +42,7 @@ filterTags text = map (filterTags' False) text
         filterTags' _     ('<':xs)    = filterTags' True xs
         filterTags' _     ('>':xs)    = filterTags' False xs
         filterTags' True  (x:xs)      = filterTags' True xs
-        filterTags' False ('&':'g':'t':';':'&':'g':'t':';':xs) = filterTags' False (drop8Nums xs)
+        filterTags' False ('&':'g':'t':';':'&':'g':'t':';':xs) = filterTags' False (dropNums xs)
         filterTags' False ('&':'a':'m':'p':';': xs) = ['&'] ++ filterTags' False xs
         filterTags' False ('&':'g':'t':';': xs) = filterTags' False xs
         filterTags' False ('&':'l':'t':';': xs) = filterTags' False xs
@@ -53,14 +53,15 @@ filterTags text = map (filterTags' False) text
         filterTags' False (x:xs)      = [x] ++ filterTags' False xs
 
 
-drop8Nums :: String -> String
-drop8Nums (a:b:c:d:e:f:g:h:xs)
+dropNums :: String -> String
+dropNums (a:b:c:d:e:f:g:h:xs)
     | all isNumber [a,b,c,d,e,f,g,h] = xs
-drop8Nums xs = xs
+    | all isNumber [a,b,c,d,e,f,g] = (h:xs)
+dropNums xs = xs
 
-threadsToLines :: [Thread] -> [String]
-threadsToLines []               = []
-threadsToLines ((Thread l):xs) = postsToLines l ++ threadsToLines xs
+threadsToPosts :: [Thread] -> [String]
+threadsToPosts []               = []
+threadsToPosts ((Thread l):xs) = postsToLines l ++ threadsToPosts xs
   where postsToLines :: [Post] -> [String]
         postsToLines []     = []
         postsToLines ((Post y):ys) = [unpack y] ++ postsToLines ys
@@ -92,10 +93,10 @@ jsonAction board fp = do
             putStrLn "Fetched current information about threads..."
             threads <- forM threadIds (getThreadByID board)
             putStrLn "Done extracting posts from all threads..."
-            let !lines = threadsToLines threads
+            let !posts = threadsToPosts threads
             putStrLn "Done converting threads to lines.."
-            let !filteredInput = filterTags lines
-            putStrLn "Done filtering tabs..."
+            let !filteredInput = filterTags posts
+            putStrLn "Done filtering..."
             let content = concatMap (\x -> x ++ "\n") filteredInput
             writeFile fp content
             putStrLn $ "Content stored in " ++ fp ++ "!"
@@ -108,6 +109,6 @@ main = do
       ["-board", board, "-to", to] -> jsonAction board to
       _            -> do
         name <- getProgName
-        putStrLn "Usage:"
+        putStrLn "How to use:"
         putStrLn $ "./" ++ name ++ " -board <4chanboard> -to <filepath to .txt>"
 
