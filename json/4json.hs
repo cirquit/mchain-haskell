@@ -8,15 +8,13 @@ import qualified Data.ByteString.Lazy as B
 import Network.HTTP.Conduit (simpleHttp)
 import GHC.Generics
 
+
 import System.IO
 import System.Environment (getArgs, getProgName)
 import Data.Char (isNumber)
 
 
 import ChanTypes
-
---getJSON :: IO B.ByteString
---getJSON = B.readFile "post.json"
 
 
 getPageThreads :: Int -> [Page] -> [Integer]
@@ -44,12 +42,21 @@ filterTags text = map (filterTags' False) text
         filterTags' True  (x:xs)      = filterTags' True xs
         filterTags' False ('&':'g':'t':';':'&':'g':'t':';':xs) = filterTags' False (dropNums xs)
         filterTags' False ('&':'a':'m':'p':';': xs) = ['&'] ++ filterTags' False xs
-        filterTags' False ('&':'g':'t':';': xs) = filterTags' False xs
-        filterTags' False ('&':'l':'t':';': xs) = filterTags' False xs
+        filterTags' False ('&':'g':'t':';': xs)     = filterTags' False xs
+        filterTags' False ('&':'l':'t':';': xs)     = filterTags' False xs
         filterTags' False ('(': xs) = filterTags' False xs
         filterTags' False (')': xs) = filterTags' False xs
-        filterTags' False ('&':'#':'0':'3':'9': ';': xs) = ['\''] ++ filterTags' False xs
-        filterTags' False ('&':'q':'u':'o':'t': ';': xs) = ['"'] ++ filterTags' False xs
+        filterTags' False ('&':'#':'0':'3':'9':';': xs) = ['\''] ++ filterTags' False xs
+        filterTags' False ('&':'q':'u':'o':'t':';': xs) = ['"'] ++ filterTags' False xs
+        filterTags' False ('\\':'8':'2':'2':'0': xs)    = ['`'] ++ filterTags' False xs
+        filterTags' False ('\\':'8':'2':'2':'1': xs)    = ['´'] ++ filterTags' False xs
+        filterTags' False ('\\':'8':'2':'1':'1': xs)    = ['-'] ++ filterTags' False xs
+        filterTags' False ('\\':'2':'3':'7': xs)        = ['Ý'] ++ filterTags' False xs
+        filterTags' False ('\\':'2':'2':'5': xs)        = ['ß'] ++ filterTags' False xs
+        filterTags' False ('&':'#':'9':'1':';': xs)     = ['['] ++ filterTags' False xs
+        filterTags' False ('&':'#':'9':'3':';': xs)     = [']'] ++ filterTags' False xs
+        filterTags' False xs@('h':'t':'t':'p': _)       = filterTags' False ys
+            where ys = unwords $ drop 1 $ words xs
         filterTags' False (x:xs)      = [x] ++ filterTags' False xs
 
 
@@ -89,9 +96,10 @@ jsonAction board fp = do
         (Left err,_)        -> putStrLn err
         (Right pages, True) -> do
 
-            let threadIds = concatMap (\x -> getPageThreads x pages) [1..10]
+            let threadIds  = concatMap (\x -> getPageThreads x pages) [1..10]
+                threadIds' = drop 1 threadIds -- remove the sticky
             putStrLn "Fetched current information about threads..."
-            threads <- forM threadIds (getThreadByID board)
+            threads <- forM threadIds' (getThreadByID board)
             putStrLn "Done extracting posts from all threads..."
             let !posts = threadsToPosts threads
             putStrLn "Done converting threads to lines.."
