@@ -1,2 +1,0 @@
-/opt/ghc/7.8.3/lib/ghc-7.8.3/bin/ghc -B/opt/ghc/7.8.3/lib/ghc-7.8.3 DB.hs -o forkdb +RTS -threaded 
-<<ghc: 1193518656 bytes, 282 GCs, 17062965/69724384 avg/max bytes residency (10 samples), 151M in use, 0.00 INIT (0.00 elapsed), 1.05 MUT (3.59 elapsed), 0.65 GC (0.65 elapsed) :ghc>>

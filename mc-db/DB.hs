@@ -9,14 +9,14 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 
-import qualified Data.Conduit.List as CL
+import Data.Conduit.List (consume)
 import Data.Conduit (($$))
-import Control.Monad.IO.Class (liftIO, MonadIO())
+import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Reader (ReaderT())
---import Database.Persist.Sqlite
-import Database.Persist.Postgresql
-
-import Database.Persist.TH
+import Control.Monad.Logger (NoLoggingT())
+import Control.Monad.Trans.Resource.Internal (ResourceT())
+import Database.Persist.Sqlite
+import Database.Persist.TH (persistLowerCase, mkMigrate, mkPersist, share, sqlSettings)
 
 import Prefix
 import Data.Text (pack, Text)
@@ -29,16 +29,6 @@ import System.Directory (doesFileExist)
 import System.Random (randomRIO)
 import Data.List (foldl')
 
-import Control.Monad.Trans.Resource.Internal
-import Control.Monad.Logger
-import Control.Monad.Trans.Class (lift)
-import Control.Monad.Base
-import Control.Concurrent.Lifted
-import Control.Concurrent.ParallelIO.Global
-import Control.Monad.Par.Combinator
-import Control.Monad.Trans.Control
-import Control.Parallel.Strategies
-
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 Word
     suffix T.Text
@@ -47,36 +37,36 @@ Word
     deriving Show
 |]
 
--- #################### LEARNING ####################
+-- ####################               ####################
+-- #################### LEARN REQUEST ####################
+-- ####################               ####################
 
 -- | Parse a list of lazy Text and matches four words
 --   The first three are the prefix, the last one is the suffix
 --   Updating the DB with the UniqueSuffix and adding
 --   the prefix to the list
 
---parseWordsToDB :: [T.Text] -> ReaderT SqlBackend (NoLoggingT (ResourceT IO))  ()
-parseWordsToDB (pref:pref':pref'':pref''':suf:xs) = do
+parseWordsToDB :: [T.Text] -> ReaderT SqlBackend (NoLoggingT (ResourceT IO))  ()
+parseWordsToDB (p1:p2:p3:suf:xs) = do
     mword <- getBy $ UniqueSuffix suf
-    let prefix = pref `T.append` " " `T.append` pref' `T.append` " " `T.append` pref'' `T.append` " " `T.append` pref'''
+    let prefix = T.unwords [p1, p2, p3]
     case mword of
       Nothing                          -> do
           insert $ Word suf [(Prefix prefix 1)]
-          parseWordsToDB (pref':pref'':pref''':suf:xs)
+          parseWordsToDB (p2:p3:suf:xs)
       Just (Entity id (Word _ prefL)) -> do
-          let newPrefL = updatePrefL prefL (Prefix prefix 1)
+          let newPrefL = updatePrefixList prefL (Prefix prefix 1)
           update id [WordPrefixes =. newPrefL]
-          parseWordsToDB (pref':pref'':pref''':suf:xs)
+          parseWordsToDB (p2:p3:suf:xs)
 parseWordsToDB _        = return ()
 
 
 -- | Reads the files with Text.Lazy
 --   Updates the DB with all the input
+--   Seperates every post as a line an tries to match four suffixes for every prefix
+--   Post are not going to be appended to each other, because it creates wrong output
 
-
---  Seperates every post as a line an tries to match four suffixes for every prefix
---  Post are not going to be appended to each other, because it creates wrong output
---parseFiles :: (MonadIO m) => [FilePath] -> ReaderT SqlBackend m ()
---parseFiles :: [FilePath] -> ReaderT SqlBackend (NoLoggingT (ResourceT IO)) ()
+parseFiles :: [FilePath] -> ReaderT SqlBackend (NoLoggingT (ResourceT IO)) ()
 parseFiles []     = liftIO $ print "Done parsing!"
 parseFiles (filename:xs) = do
   exists  <- liftIO $ doesFileExist filename
@@ -88,18 +78,16 @@ parseFiles (filename:xs) = do
         content <- liftIO $ TL.readFile filename
 
         mapM_ (parseWordsToDB . T.words) $ T.lines content
-        --mapM_ (fork . parseWordsToDB . T.words) $ T.lines content
 
         liftIO $ print $ "Parsed file " ++ filename ++ "!..."
         parseFiles xs
 
 
-updatePrefL :: [Prefix] -> Prefix -> [Prefix]
-updatePrefL []                pre  = [pre]
-updatePrefL (p1@(Prefix w c):xs) p2@(Prefix w' c')
+updatePrefixList :: [Prefix] -> Prefix -> [Prefix]
+updatePrefixList []                pre  = [pre]
+updatePrefixList (p1@(Prefix w c):xs) p2@(Prefix w' c')
     | w == w'   = (Prefix w (c+c')) : xs
-    | otherwise = p1 : updatePrefL xs p2
-
+    | otherwise = p1 : updatePrefixList xs p2
 
 
 -- | Single Connection with DB
@@ -112,36 +100,30 @@ learnAction fp fps = runSqlite fp $ do
 
     return ()
 
-
---newLearnAction :: Text -> [T.Text] -> IO()
---newLearnAction fp line = runSqlite fp $ do
---    runMigration migrateAll
---
---    liftIO $ parseWordsToDB line
---
---    return ()
-
-
+-- ####################             ####################
 -- #################### GET Request ####################
+-- ####################             ####################
 
-getSemiRandomThunk :: [Prefix] -> Int -> T.Text
-getSemiRandomThunk []     _ = "!!!ERROR!!!"
-getSemiRandomThunk ((Prefix w n):xs) c
-    | c - n <= 0 = w --(T.words w) !! 0
-    | otherwise  = getSemiRandomThunk xs (c-n)
+-- | Every 'GET' request to the DB is called within this function
+getAction :: Text -> Int -> IO()
+getAction fp n = runSqlite fp $ do
+    runMigration migrateAll
 
+    let sql = "Select Count(*) FROM WORD;"
+    [[PersistInt64 i]] <- rawQuery sql [] $$ consume
+    let dbRowCount = fromIntegral i :: Integer
 
-stripEntity :: Maybe (Entity Word) -> Maybe Word
-stripEntity (Just (Entity _ word)) = Just word
-stripEntity Nothing                = Nothing
+    sentence <- constructSentence dbRowCount n Nothing
 
+    liftIO $ print $ T.drop 1 sentence
+
+    return ()
 
 -- Ques in the DB and constructs a sentence with N thunks
-constructSentence :: (Control.Monad.IO.Class.MonadIO m)
-                  => Integer     -- DB size
+constructSentence :: Integer     -- DB size
                   -> Int         -- thunks
                   -> Maybe Word
-                  -> ReaderT SqlBackend m T.Text
+                  -> ReaderT SqlBackend (NoLoggingT (ResourceT IO)) T.Text
 
 -- end condition
 constructSentence _ 0 mword = return $ ""
@@ -158,36 +140,27 @@ constructSentence dbSize thunks (Just (Word suf [])) = do
     r <- liftIO $ randomRIO (0, dbSize)
     mword <- get $ (toSqlKey (fromIntegral r) :: Key Word)
     rest <- constructSentence dbSize (thunks - 1) mword
-    return $ rest `T.append` " " `T.append` suf
+    return $ T.unwords [rest, suf]
 
 -- word does have prefixes -> choose a semi-random one
 constructSentence dbSize thunks (Just (Word suf ps)) = do
     let psmax = foldl' (\acc (Prefix _ val) -> val + acc) 0 ps
     r <- liftIO $ randomRIO (0, psmax)
     let prefix = getSemiRandomThunk ps r
-    let newsuffix = T.words prefix !! 0
+        newsuffix = T.words prefix !! 0
     mword <- getBy $ UniqueSuffix newsuffix
     rest <- constructSentence dbSize (thunks - 1) (stripEntity mword)
-    return $ rest `T.append` " " `T.append` prefix
+    return $ T.unwords [rest, prefix]
 
+getSemiRandomThunk :: [Prefix] -> Int -> T.Text
+getSemiRandomThunk []     _ = "__error__"
+getSemiRandomThunk ((Prefix w n):xs) c
+    | c - n <= 0 = w
+    | otherwise  = getSemiRandomThunk xs (c-n)
 
--- | Single Connection with DB
---   Every 'GET' access to DB is called within this function
-getAction :: Text -> Int -> IO()
-getAction fp n = runSqlite fp $ do
-    runMigration migrateAll
-
-    let sql = "Select Count(*) FROM WORD;"
-    [[PersistInt64 i]] <- rawQuery sql [] $$ CL.consume
-    let dbRowCount = fromIntegral i :: Integer
-
-    sentence <- constructSentence dbRowCount n Nothing
-
-    liftIO $ print $ T.drop 1 sentence
-
-    return ()
-
-
+stripEntity :: Maybe (Entity Word) -> Maybe Word
+stripEntity (Just (Entity _ word)) = Just word
+stripEntity Nothing                = Nothing
 
 -- | Main entry point
 --   Simple command line support
