@@ -13,7 +13,9 @@ import qualified Data.Conduit.List as CL
 import Data.Conduit (($$))
 import Control.Monad.IO.Class (liftIO, MonadIO())
 import Control.Monad.Trans.Reader (ReaderT())
-import Database.Persist.Sqlite
+--import Database.Persist.Sqlite
+import Database.Persist.Postgresql
+
 import Database.Persist.TH
 
 import Prefix
@@ -27,6 +29,16 @@ import System.Directory (doesFileExist)
 import System.Random (randomRIO)
 import Data.List (foldl')
 
+import Control.Monad.Trans.Resource.Internal
+import Control.Monad.Logger
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Base
+import Control.Concurrent.Lifted
+import Control.Concurrent.ParallelIO.Global
+import Control.Monad.Par.Combinator
+import Control.Monad.Trans.Control
+import Control.Parallel.Strategies
+
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 Word
     suffix T.Text
@@ -37,12 +49,12 @@ Word
 
 -- #################### LEARNING ####################
 
--- | [T.Text] -> DB Action
---   Parse a list of lazy Text and matches four words
+-- | Parse a list of lazy Text and matches four words
 --   The first three are the prefix, the last one is the suffix
 --   Updating the DB with the UniqueSuffix and adding
 --   the prefix to the list
 
+--parseWordsToDB :: [T.Text] -> ReaderT SqlBackend (NoLoggingT (ResourceT IO))  ()
 parseWordsToDB (pref:pref':pref'':pref''':suf:xs) = do
     mword <- getBy $ UniqueSuffix suf
     let prefix = pref `T.append` " " `T.append` pref' `T.append` " " `T.append` pref'' `T.append` " " `T.append` pref'''
@@ -57,10 +69,14 @@ parseWordsToDB (pref:pref':pref'':pref''':suf:xs) = do
 parseWordsToDB _        = return ()
 
 
--- | [FilePath] -> DB Action
---   Reads the files with Text.Lazy
+-- | Reads the files with Text.Lazy
 --   Updates the DB with all the input
 
+
+--  Seperates every post as a line an tries to match four suffixes for every prefix
+--  Post are not going to be appended to each other, because it creates wrong output
+--parseFiles :: (MonadIO m) => [FilePath] -> ReaderT SqlBackend m ()
+--parseFiles :: [FilePath] -> ReaderT SqlBackend (NoLoggingT (ResourceT IO)) ()
 parseFiles []     = liftIO $ print "Done parsing!"
 parseFiles (filename:xs) = do
   exists  <- liftIO $ doesFileExist filename
@@ -70,7 +86,10 @@ parseFiles (filename:xs) = do
         parseFiles xs
     True  -> do
         content <- liftIO $ TL.readFile filename
-        parseWordsToDB $ T.words content
+
+        mapM_ (parseWordsToDB . T.words) $ T.lines content
+        --mapM_ (fork . parseWordsToDB . T.words) $ T.lines content
+
         liftIO $ print $ "Parsed file " ++ filename ++ "!..."
         parseFiles xs
 
@@ -92,6 +111,16 @@ learnAction fp fps = runSqlite fp $ do
     parseFiles fps
 
     return ()
+
+
+--newLearnAction :: Text -> [T.Text] -> IO()
+--newLearnAction fp line = runSqlite fp $ do
+--    runMigration migrateAll
+--
+--    liftIO $ parseWordsToDB line
+--
+--    return ()
+
 
 -- #################### GET Request ####################
 
@@ -174,4 +203,3 @@ main = do
           putStrLn "How to use:"
           putStrLn $ pname ++ " -db <database-path> -learn <txt-file-path(s)>"
           putStrLn $ pname ++ " -db <database-path> -get <thunk-size in int>"
-
