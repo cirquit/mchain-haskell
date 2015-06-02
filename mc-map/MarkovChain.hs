@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, ViewPatterns #-}
+{-# LANGUAGE OverloadedStrings, ViewPatterns, ScopedTypeVariables, BangPatterns #-}
 
 module Main where
 
@@ -7,7 +7,10 @@ import System.Random (randomRIO)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.IO as TIO
 import Data.List
-import System.Environment
+import System.Environment (getArgs, getProgName)
+import System.Directory (doesFileExist)
+import System.IO (hSetBuffering, stdout, BufferMode(..))
+
 
 type Suffix = T.Text
 
@@ -16,75 +19,116 @@ data Prefix = Prefix {prefix :: T.Text, chance :: Int}
 type Storage = M.Map Suffix [Prefix]
 
 
-instance  Show Prefix where
-  show (Prefix pre chance) = "Prefix: " ++ (T.unpack pre) ++ " || Seen: " ++ show chance ++ "\n"
+------------------------------------------------------------------------------------
+--------------------------------- GET SENTENCE -------------------------------------
+------------------------------------------------------------------------------------
+
+-- | Prints a sentence with N thunks
+
+--   Searches the Map for a suffix
+--   If it exists, get a semi-random prefix and use
+--   the first word as a new key to search the map
+--   until all thunks are generated
+printSentence :: Int -> Storage -> IO()
+printSentence thunkscount table = printS thunkscount "" table ""
+  where printS :: Int     -- thunk count
+               -> T.Text  -- key
+               -> Storage
+               -> T.Text  -- accumulated thunks
+               -> IO()
+
+        printS 0 _ _       acc = TIO.putStrLn $ "..." `T.append` acc `T.append` "..."
+
+        printS thunks key storage acc = do
+            case M.lookup key storage of
+                (Just prefixL) -> do
+
+                    (Prefix prefix _) <- getSemiRandomPrefix prefixL
+                    let key' | T.null prefix  = ""
+                             | otherwise = head $ T.words prefix
+                    printS (thunks-1) key' storage (T.unwords [prefix, acc])
+
+                Nothing        -> do
+
+                    index <- randomRIO (0, (M.size storage)- 1)
+                    let (_, prefixL) = M.elemAt index storage
+                    (Prefix prefix _) <- getSemiRandomPrefix prefixL
+                    let key | T.null prefix  = ""
+                            | otherwise = head $ T.words prefix
+                    printS (thunks-1) key storage (T.unwords [prefix, acc])
 
 
-updatePrefix :: T.Text -> [Prefix] -> [Prefix]
-updatePrefix p []                 = [(Prefix p 1)]
-updatePrefix p ((Prefix p' c):xs)
-  | p == p'   = (Prefix p' (c+1)) : xs
-  | otherwise = (Prefix p'     c) : updatePrefix p xs
-
-
-updatePsWith :: [T.Text] -> [Prefix] -> [Prefix]
-updatePsWith []     xs = xs
-updatePsWith (p:ps) xs = updatePsWith ps $ updatePrefix p xs
-
-writeTable :: [T.Text] -> Storage -> Storage
-writeTable (p1:p2:p3:pref:suf:xs) storage =
-    let fullPref = p1 `T.append` " " `T.append` p2 `T.append` " " `T.append` p3 `T.append` " " `T.append` pref in
-    case M.lookup suf storage of
-        (Just _) -> let storage' = M.adjust (updatePsWith [fullPref]) suf storage in
-                        writeTable (p2:p3:pref:suf:xs) storage'
-        Nothing  -> let storage' = M.insert suf [(Prefix fullPref 1)] storage in
-                        writeTable (p2:p3:pref:suf:xs) storage'
-writeTable _          storage = storage
-
-randomPrefix :: Int -> Int -> [Prefix] -> Prefix
-randomPrefix _ _ [] = (Prefix "ERROR" 1)
-randomPrefix n m ((Prefix p j):xs)
-    | n <= m = Prefix p m
-    | otherwise = randomPrefix n (m+j) xs
-
-getSemiRandomPrefix :: [Prefix] -> IO(Prefix)
+-- | get a random Prefix from a [Prefix] based
+--   while considering the occurencies from each Prefix
+getSemiRandomPrefix :: [Prefix] -> IO (Prefix)
 getSemiRandomPrefix list = do
   let maxR = foldl' (\xs (Prefix _ n) -> n + xs) 0 list
   r <- randomRIO (0, maxR - 1)
-  return $ randomPrefix r 0 list
+  return $ getPrefixAt r list
 
-crtSentence :: Int -> T.Text ->  Storage -> T.Text -> IO()
-crtSentence 0 _ _       acc = TIO.putStrLn acc
-crtSentence c k storage acc = do
-    let pref = if T.null k then "" else head $ T.words k
-    case M.lookup pref storage of
-        (Just prefixL) -> do
-            (Prefix p _) <- getSemiRandomPrefix prefixL
-            crtSentence (c-1) p storage (p `T.append` (' ' `T.cons` acc))
-        Nothing        -> do
-            index <- randomRIO (0, (M.size storage)- 1)
-            let (k, prefixL) = M.elemAt index storage
-            (Prefix p _) <- getSemiRandomPrefix prefixL
-            crtSentence (c-1) p storage (p `T.append` (' ' `T.cons` acc))
-
-doIt :: Int -> Storage -> IO()
-doIt c table = crtSentence c "" table ""
-
-createMap :: [FilePath] -> Storage -> IO(Storage)
-createMap []      storage = return storage
-createMap (fp:xs) storage = do
-  f <- TIO.readFile fp
-  let toFilter = "01234567889,!§$%&/()=?¹²³¼½¬{[]}'+*~'#’_:;>–…·|-<"
-      parsedContent = T.map (\x -> if x `elem` toFilter then ' ' else x) f
-  createMap xs (writeTable (T.words parsedContent) storage)
+getPrefixAt :: Int -> [Prefix] -> Prefix
+getPrefixAt _ [] = error "random index out of bounds"
+getPrefixAt n ((Prefix p j):xs)
+    | n - j <= 0 = Prefix p j
+    | otherwise  = getPrefixAt (n-j) xs
 
 
+------------------------------------------------------------------------------------
+--------------------------------- LEARNING -----------------------------------------
+------------------------------------------------------------------------------------
+
+-- | create a Map from every file
+--   if it doesn't exist, proceed to the next file
+createMap :: [FilePath] -> Storage -> IO (Storage)
+createMap []            storage = return storage
+createMap (filename:xs) storage = do
+    exists  <- doesFileExist filename
+    case exists of
+        False -> do
+            print $ "Sorry, " ++ filename ++ " can't be found."
+            createMap xs storage
+        True  -> do
+            content <- TIO.readFile filename
+            let !storage' = foldl' (\xs x -> writeTable (T.words x) xs) storage (T.lines content)
+            print $ "Parsed file " ++ filename ++ "!..."
+            createMap xs storage'
+
+-- | matches 5 words
+--   first 4 are the prefixs, the fifth one is the suffix
+--   update the Map with Suffix as key and [Prefix] as values
+writeTable :: [T.Text] -> Storage -> Storage
+writeTable (p1:p2:p3:p4:suf:xs) storage =
+    let prefix = T.unwords [p1,p2,p3,p4] in
+    case M.lookup suf storage of
+        (Just _) -> let storage' = M.adjust (updatePrefixList prefix) suf storage in
+                        writeTable (p2:p3:p4:suf:xs) storage'
+        Nothing  -> let storage' = M.insert suf [(Prefix prefix 1)]       storage in
+                        writeTable (p2:p3:p4:suf:xs) storage'
+writeTable _             storage = storage
+
+-- | Increments counter if the prefix exists
+--   If not, it appends the new prefix with count = 1
+updatePrefixList :: T.Text -> [Prefix] -> [Prefix]
+updatePrefixList prefix []                = [(Prefix prefix 1)]
+updatePrefixList prefix ((Prefix p c)     : xs)
+    | prefix == p      = (Prefix p (c+1)) : xs
+    | otherwise        = (Prefix p c)     : updatePrefixList prefix xs
+
+
+------------------------------------------------------------------------------------
+------------------------------ MAIN ENTRY POINT ------------------------------------
+------------------------------------------------------------------------------------
+
+-- |  Short command line support
 main :: IO()
 main = do
     args <- getArgs
+    hSetBuffering stdout NoBuffering
     case args of
-      (x:fp:xs) | [(n,[])] <- reads x -> do
-                  t <- createMap (fp:xs) M.empty
-                  doIt n t
+      ("-get":x:"-from":xs) | [(thunks :: Int,[])] <- reads x -> do
+          suf_map <- createMap xs M.empty
+          printSentence thunks suf_map
       _                 -> do
-          putStrLn "Error in usage"
+          pname <- getProgName
+          putStrLn "How to use:"
+          putStrLn $ pname ++ " -get <thunk-size in int> -from <txt-file-path(s)>"
