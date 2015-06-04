@@ -1,5 +1,5 @@
 ## mchain-haskell
-Persistent Marchov Chain generator based on 4chan boards
+Non-/Persistent Marchov Chain generator based on 4chan boards
 
 * `lib/`    - text-src
 * `mc-db/`  - db executable
@@ -16,7 +16,7 @@ Persistent Marchov Chain generator based on 4chan boards
 
 * `./gchan -to file.txt -board g`
 
-## How to use the db-access
+## How to use the persistent generator
 
 * `./mchain -db <path to .sqlite3-db> -learn <filepath(s) to .txt to learn from>`
 * `./mchain -db <path to .sqlite3-db> -get <thunks as a number>`
@@ -26,6 +26,13 @@ Persistent Marchov Chain generator based on 4chan boards
 * `./mchain -db g_4chan.sqlite3 -learn file1.txt file2.txt`
 * `./mchain -db g_4chan.sqlite3 -get 5`
 
+# How to use the non-persistent generator
+
+* `./mc-map -get <thunks as a number> -from <filepath(s) to .txt to learn from>`
+
+# Examples
+
+* `./mc-map -get 4 -from ../lib/a_01_06_2015.txt ../lib/g_02_06_2015.txt`
 
 # TODO
 

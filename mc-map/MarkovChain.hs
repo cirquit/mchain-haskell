@@ -10,7 +10,9 @@ import Data.List
 import System.Environment (getArgs, getProgName)
 import System.Directory (doesFileExist)
 import System.IO (hSetBuffering, stdout, BufferMode(..))
+import System.Exit (exitSuccess)
 
+import Control.Monad (forever)
 
 type Suffix = T.Text
 
@@ -37,7 +39,7 @@ printSentence thunkscount table = printS thunkscount "" table ""
                -> T.Text  -- accumulated thunks
                -> IO()
 
-        printS 0 _ _       acc = TIO.putStrLn $ "..." `T.append` acc `T.append` "..."
+        printS 0 _ _       acc = TIO.putStrLn $ "\n..." `T.append` acc `T.append` "..."
 
         printS thunks key storage acc = do
             case M.lookup key storage of
@@ -128,7 +130,22 @@ main = do
       ("-get":x:"-from":xs) | [(thunks :: Int,[])] <- reads x -> do
           suf_map <- createMap xs M.empty
           printSentence thunks suf_map
+          loop suf_map
       _                 -> do
           pname <- getProgName
           putStrLn "How to use:"
           putStrLn $ pname ++ " -get <thunk-size in int> -from <txt-file-path(s)>"
+
+loop :: Storage -> IO()
+loop suf_map = do
+    forever $ do
+        putStr "\nThunkscount = "
+        line <- getLine
+        case line of
+           x | [(thunks :: Int,[])] <- reads x -> printSentence thunks suf_map
+           "q"                                 -> exitSuccess
+           "Q"                                 -> exitSuccess
+           ":q"                                -> exitSuccess
+           ":Q"                                -> exitSuccess
+           "quit"                              -> exitSuccess
+           _                                   -> putStrLn "\nSorry, not a valid number"
