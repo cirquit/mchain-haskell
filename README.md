@@ -14,7 +14,7 @@ Non-/Persistent Marchov Chain generator based on 4chan boards
 
 #### Example
 
-* `./gchan -to file.txt -board g`
+* `./gchan  -board g -to file.txt`
 
 ## How to use the persistent generator
 
