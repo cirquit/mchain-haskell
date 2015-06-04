@@ -12,16 +12,16 @@ Non-/Persistent Marchov Chain generator based on 4chan boards
 
 * `./gchan -board <a board from 4chan with no less than 10 pages> -to <txt-file to save to>`
 
-# Example
+#### Example
 
 * `./gchan -to file.txt -board g`
 
-## How to use the persistent generator
+# How to use the persistent generator
 
 * `./mchain -db <path to .sqlite3-db> -learn <filepath(s) to .txt to learn from>`
 * `./mchain -db <path to .sqlite3-db> -get <thunks as a number>`
 
-# Examples
+#### Example
 
 * `./mchain -db g_4chan.sqlite3 -learn file1.txt file2.txt`
 * `./mchain -db g_4chan.sqlite3 -get 5`
@@ -30,7 +30,7 @@ Non-/Persistent Marchov Chain generator based on 4chan boards
 
 * `./mc-map -get <thunks as a number> -from <filepath(s) to .txt to learn from>`
 
-# Examples
+#### Example
 
 * `./mc-map -get 4 -from ../lib/a_01_06_2015.txt ../lib/g_02_06_2015.txt`
 
