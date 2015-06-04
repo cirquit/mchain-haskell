@@ -96,7 +96,10 @@ jsonAction board fp = do
         (Left err,_)        -> putStrLn err
         (Right pages, True) -> do
 
-            let threadIds  = concatMap (\x -> getPageThreads x pages) [1..10]
+            let pageCount | board == "b" = [1..9]
+                          | otherwise    = [1..10]
+
+            let threadIds  = concatMap (\x -> getPageThreads x pages) pageCount
                 threadIds' = drop 1 threadIds -- remove the sticky
             putStrLn "Fetched current information about threads..."
             threads <- forM threadIds' (getThreadByID board)
@@ -119,4 +122,3 @@ main = do
         name <- getProgName
         putStrLn "How to use:"
         putStrLn $ "./" ++ name ++ " -board <4chanboard> -to <filepath to .txt>"
-
