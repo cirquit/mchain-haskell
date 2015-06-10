@@ -1,11 +1,19 @@
 # mchain-haskell
 Non-/Persistent Marchov Chain generator based on 4chan boards
 
-* `lib/`    - text-src
-* `mc-db/`  - db executable
-* `mc-map/` - same program with a map
-* `json/`   - JSON board to .txt parser
+* `lib/`    - text-source
+* `src/`    - .hs-Files
+  * `src/mc-map`    - implemented with a map
+  * `src/mc-db`     - implemented with a sqlite-db
+  * `src/json`      - threadgrepper with json
+* `bin/`    - executable
 
+
+### How to compile
+
+  * `make json` in `/`
+  * `make mc-map` in `/`
+  * `make mc-db` in `/`
 
 ## How to fetch threads from a 4chan board
 
