@@ -1,6 +1,6 @@
 CC = ghc
-DBOUT  = -o bin/mchain-db
-MAPOUT = -o bin/mchain-map
+DBOUT  = -o bin/mdb
+MAPOUT = -o bin/mmap
 JOUT   = -o bin/jchan
 CFLAGS = -O2
 
