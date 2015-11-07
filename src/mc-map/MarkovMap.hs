@@ -3,20 +3,22 @@
 module Main where
 
 import qualified Data.Map as M
-import System.Random (randomRIO)
+import System.Random                          (randomRIO)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.IO as TIO
-import Data.List
-import System.Environment (getArgs, getProgName)
-import System.Directory (doesFileExist)
-import System.IO (hSetBuffering, stdout, BufferMode(..))
-import System.Exit (exitSuccess)
-
-import Control.Monad (forever)
+import Data.List                              (foldl')
+import System.Environment                     (getArgs, getProgName)
+import System.Directory                       (doesFileExist)
+import System.IO                              (hSetBuffering, stdout, BufferMode(..))
+import System.Exit                            (exitSuccess)
+import Control.Monad                          (forever)
 
 type Suffix = T.Text
 
-data Prefix = Prefix {prefix :: T.Text, chance :: Int}
+data Prefix = Prefix
+            { prefix :: T.Text
+            , chance :: Int
+            }
 
 type Storage = M.Map Suffix [Prefix]
 
